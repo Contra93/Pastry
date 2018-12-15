@@ -1,0 +1,69 @@
+Total Processes:5
+Total User Time:0.21969699999999998
+Total System Time:0.013169999999999998
+Total Process Time:0.232867
+Total Memory:84632
+Total Wall Clock Time:6.33762558700073
+
+Total Processes:15
+Total User Time:0.512415
+Total System Time:0.057170000000000006
+Total Process Time:0.569585
+Total Memory:243956
+Total Wall Clock Time:6.383395783000196
+
+Total Processes:25
+Total User Time:0.7715179999999999
+Total System Time:0.09195500000000001
+Total Process Time:0.8634729999999997
+Total Memory:407196
+Total Wall Clock Time:6.415963941999507
+
+Total Processes:35
+Total User Time:1.367374
+Total System Time:0.11158499999999999
+Total Process Time:1.4789590000000004
+Total Memory:581548
+Total Wall Clock Time:6.543579516999671
+
+Total Processes:45
+Total User Time:1.758501
+Total System Time:0.144555
+Total Process Time:1.9030559999999999
+Total Memory:748328
+Total Wall Clock Time:6.496582718999889
+
+Total Processes:55
+Total User Time:2.6475079999999998
+Total System Time:0.18681799999999996
+Total Process Time:2.8343260000000003
+Total Memory:930432
+Total Wall Clock Time:6.695571104999544
+
+Total Processes:65
+Total User Time:3.5094779999999997
+Total System Time:0.28510599999999997
+Total Process Time:3.7945839999999986
+Total Memory:1106028
+Total Wall Clock Time:6.890108072000658
+
+Total Processes:75
+Total User Time:3.8893030000000004
+Total System Time:0.335409
+Total Process Time:4.224711999999999
+Total Memory:1290528
+Total Wall Clock Time:6.916302534998977
+
+Total Processes:85
+Total User Time:5.150288
+Total System Time:0.394567
+Total Process Time:5.544854999999999
+Total Memory:1469984
+Total Wall Clock Time:7.190210851000302
+
+Total Processes:95
+Total User Time:6.045554000000002
+Total System Time:0.4078449999999999
+Total Process Time:6.453399
+Total Memory:1650440
+Total Wall Clock Time:7.365922241999215

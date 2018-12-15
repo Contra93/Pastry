@@ -1,0 +1,200 @@
+import os
+import sys
+import pastry
+import time
+import random
+import numpy as np
+from math import sqrt
+import controller
+
+class ClientLookup(process):
+
+    def setup(boot, N, b, L, M, keySize, lTrials, tl, tps):
+
+        self.successRuns = 0
+        self.totalHops = 0
+        self.countList = [0 for o in range(0,14)]
+        self.distInfo = []
+        pass
+
+    def getRelativeDistance(coord1, coord2):
+        yDiff = coord1[1] - coord2[1]
+        xDiff = coord1[0] - coord2[0]
+        dist = sqrt(yDiff**2 + xDiff**2)
+        return dist
+
+    def receive(msg= ('totalHops', src, dst, numHops, tDist)):
+        print('Minimum number of hops to route from ', src.nodeid, ' to ',
+              dst.nodeid, ' is ', numHops)
+        print('Length of route distance from ', src.nodeid, ' to ',
+              dst.nodeid, ' is ', tDist)
+        print('Length of ficticious distance from ', src.nodeid, ' to ',
+            dst.nodeid, ' is ', getRelativeDistance(src.coordinates, dst.coordinates))
+        
+        t = logical_clock()
+        send(('LookupCompleted', t), to= self)
+        send(('LookupCompleted', t), to= parent())
+        if numHops > 0:
+            self.successRuns += 1
+            self.totalHops += numHops
+            self.countList[numHops] = self.countList[numHops] +1
+            self.distInfo.append((getRelativeDistance(src.coordinates, dst.coordinates), tDist))
+        pass
+
+    def receive(msg= ('randomNodeList', objList), from_= X):
+        srcObj = objList[0]
+        dstObj = objList[1]
+        # print('Random Nodes:', '(', srcObj.nodeObj, srcObj.nodeid, ')', ' (',
+        #       dstObj.nodeObj, dstObj.nodeid, ')')
+        send(('getHopCount', srcObj, dstObj), to= dstObj.nodeObj)
+
+    def run():
+        print('######################## Starting lookup for nodes ########################')
+        start_time = time.time()
+        for i in range(lTrials):
+            send(('getRandomNodes', 2), to= boot)
+
+        if await(some(received(('LookupCompleted', _)),
+                      has= len(setof(t, received(('LookupCompleted', t))))
+                           == lTrials)):
+            end_time = time.time()
+            print('Total time taken in lookup is', (end_time - start_time))
+            print('Average time taken in lookup is ', (end_time - start_time) /
+                  lTrials)
+            pass
+        elif timeout(tps):
+            print('Couldn\'t determine time taken for lookup')
+            pass
+        if self.successRuns != 0:
+            print('N = {} , lookup trails {} , successRuns {} '.format(N, lTrials, self.successRuns))
+            print(self.countList)
+            print('Average hops: ', float(self.totalHops / self.successRuns))
+            x = [d2/d1 for (d1, d2) in self.distInfo]
+            print('Relative Distance Info ', np.mean(x))
+            
+            f = open("results.txt", "a")
+            f.write('N = {} , b = {} , keySize = {} , |L| = {} , |M| = {} , lookup trails {} , successRuns {} '.format(N, b, keySize, L, M, lTrials, self.successRuns))
+            f.write("\n" + str(self.countList))
+            f.write('\nAverage hops: ' + str(float(self.totalHops / self.successRuns)))
+            f.write('\nRelative Distance: '+str(np.mean(x)))
+            f.write('\n\n')
+            
+        else:
+            print('All runs failed lookup')
+        print('Terminating ClientLookup')
+
+def main():
+    config(channel is fifo, clock is lamport)
+
+    # N -> Number of processes
+    # dNodes -> Number of nodes to be disabled
+    # lTrials -> lookup trials
+    # B is given as a configurable parameter, with default parameter 4
+    # keySize is the number of bits in nodeid
+    # tl, td, ti -> timeout for lookup, delete, init
+    # tack -> Acknowledgement timeout
+    # tn -> Time for periodically checking neighborhood set
+
+    N = int(sys.argv[1]) if len(sys.argv) > 1 else 10
+    dNodes = int(sys.argv[2]) if len(sys.argv) > 2 else 0
+    lTrials = int(sys.argv[3]) if len(sys.argv) > 3 else 50
+
+    b = int(sys.argv[4]) if len(sys.argv) > 4 else 2
+    keySize = int(sys.argv[5]) if len(sys.argv) > 5 else 16
+    tl = int(sys.argv[6]) if len(sys.argv) > 6 else 15
+    
+    td = int(sys.argv[7]) if len(sys.argv) > 7 else 1
+    ti = int(sys.argv[8]) if len(sys.argv) > 8 else 1
+    tack = float(sys.argv[9]) if len(sys.argv) > 9 else 1.0
+    tn = int(sys.argv[10]) if len(sys.argv) > 10 else 5
+    tps = int(sys.argv[11]) if len(sys.argv) > 11 else 100
+
+    L = 2**(b)
+    M = 2**(b + 1)
+    leafSetLen = int(L/2)
+
+    # Initialize the bootstrap node
+    boot = new(pastry.BootStrapNode)
+    setup(boot, (b, keySize, L, M, leafSetLen, tack))
+    start(boot)
+
+    # Initialize Pastry nodes
+    startTimeNodeInit = time.time()
+    ps = new(pastry.PastryNode, num=N)
+    totalTimeJoin = 0.0
+
+    ctl = None
+    # ctl = new(controller.Controller, num= 1)
+    # setup(ctl, (N, ))
+    # start(ctl)
+
+    count = 0
+    for p in ps:
+        endTimeNodeJoin = time.time()
+        startTimeNodeJoin = time.time()
+
+        setup(p, (ctl, boot, b, keySize, L, M, leafSetLen, ti, tack, tn, tps))
+
+        start(p)
+        if await(some(received(('JoinCompleted'), from_= p))):
+            count += 1
+            endTimeNodeJoin = time.time()
+            pass
+        elif timeout(5):
+            endTimeNodeJoin = time.time()
+            pass
+        time.sleep(0.1)
+        totalTimeJoin += (endTimeNodeJoin - startTimeNodeJoin)
+
+    # Only count nodes are initialized. Any node with same nodeid won't affect
+    # count variable. Hence, N = count
+    N = count
+
+    endTimeNodeInit = time.time()
+    print('All Pastry Nodes initialized')
+
+    f = open("NodeStatistics.txt", "a")
+    f.write('N = {}'.format(N))
+    f.write('\nTotal time taken in node joining ' + str(totalTimeJoin))
+    f.write('\nAverage time taken in node joining ' + str(totalTimeJoin /
+                                                         len(ps)))
+    f.write('\nTime taken in nodes initialization is ' + str(endTimeNodeInit -
+                                                            startTimeNodeInit))
+    f.write('\n\n')
+
+    send(('getRandomNodes', dNodes), to= boot)
+    if await(some(received(('randomNodeList', objs), from_= X))):
+        kList = [o.nodeObj for o in objs]
+        end(kList)
+    elif timeout(td):
+        pass
+
+    if await(False):
+        pass
+    elif timeout(td):
+        pass
+
+    # Start Lookup Process
+    cl = new(ClientLookup, num=1)
+    setup(cl, (boot, N, b, L, M, keySize, lTrials, tl, tps))
+
+    start(cl)
+
+    if await(some(received(('LookupCompleted', _)),
+                  has= len(setof(t, received(('LookupCompleted', t))))
+                       == lTrials)):
+                       
+        print('All processes completed. Killing everyone.')
+        for p in ps:
+            send(('ExitProcess'), to= p)
+        send(('ExitProcess'), to= boot)
+    elif timeout(tps):
+        for p in ps:
+            send(('ExitProcess'), to= p)
+        send(('ExitProcess'), to= boot)
+
+    print('Terminating Main')
+    pass
+
+if __name__ == '__main__':
+    main()

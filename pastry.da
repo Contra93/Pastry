@@ -1,0 +1,1015 @@
+import os
+import sys
+import random
+import hashlib
+import time
+import math
+import controller
+from math import sqrt
+from operator import itemgetter
+from random import randint
+
+# L is given as a configurable parameter which denotes the number of "leafs"
+# stored in the local leaf table. L has default value of 2**b
+# leafSetLength -> upLeafSet and downLeafSet length
+# M is given as a configurable parameter which denotes the size of the
+# neighborhood set. M has default value of 2**b or 2**(b + 1)
+
+# INFINITY is defined by using this value
+# Alias: INF
+INF = int('9'*50)
+
+class BootStrapNode(process):
+    def setup(b:int, keySize:int, L:int, M:int, leafSetLen:int, tack:float):
+        self.nodes = []
+        pass
+
+    def getRelativeDistance(coord1, coord2):
+        """
+        For scalar procimity metric, we use geographic distance of pastry nodes
+        for populating the neighborhood set.
+
+        Page number 9, section 2.5, paragraph 2 mentions:
+        'Pastry’s notion of network proximity is based on a scalar proximity
+        metric, such as the number of IP routing hops or geographic distance.'
+        """
+        yDiff = coord1[1] - coord2[1]
+        xDiff = coord1[0] - coord2[0]
+        dist = sqrt(yDiff**2 + xDiff**2)
+        return dist
+
+    def receive(msg= ('getRandomNodes', numNodes), from_= X):
+        """
+        The tester program contacts this node for information regarding any two
+        alive random nodes to initiate lookup between them and determine hop
+        count which is a correctness and performance metric mentioned in the
+        paper.
+        """
+        if numNodes > len(self.nodes):
+            print("Requested too many nodes. Not enough nodes in network")
+            return
+        objList = random.sample(self.nodes, numNodes)
+        i = -1
+        while i < numNodes - 1:
+            i += 1
+            o = objList[i]
+            # Making sure both source and destination is alive
+            t = logical_clock()
+            send(('isNodeAlive', t), to= o.nodeObj)
+            if await(some(received(('NodeIsAlive', _t)))):
+                pass
+            elif timeout(tack):
+                objList[i] = random.choice(self.nodes)
+                i -= 1
+                pass
+        send(('randomNodeList', objList), to= X)
+
+    def receive(msg= ('getClosestNeighbor', data), from_= X):
+        """
+        Page number 7, section 2.4, paragraph 2 mentions:
+        'We assume the new node knows initially about a nearby Pastry node A,
+        according to the proximity metric, that is already part of the system.
+        Such a node can be located automatically, for instance, using “expanding
+        ring” IP multicast, or be obtained by the system administrator through
+        outside channels.'
+
+        Providing information about a Pastry node according to proximity metric
+        is the responsibility of this node.
+        """
+        minDist = INF
+        closestNode = None
+        closestNodeId = ''
+        if (data.nodeid in [o.nodeid for o in self.nodes]):
+            send(('closestNode', data.nodeObj, data.nodeid), to= X)
+            return
+        for obj in self.nodes:
+            dist = getRelativeDistance(obj.coordinates, data.coordinates)
+            if (minDist > dist):
+                minDist = dist
+                closestNode = obj.nodeObj
+                closestNodeId = obj.nodeid
+        nodes.append(data)
+        send(('closestNode', closestNode, closestNodeId), to= X)
+        pass
+
+    def run():
+        """
+        This is the driver program for the BootStrap node. It simply waits for
+        some process to give the message ExitProcess. Upon receiving this
+        message, it terminates itself.
+        """
+        print('BootStrap Node initiated')
+        if await(some(received(('ExitProcess')))):
+            print('Bootstrap node is exiting')
+            return
+        pass
+
+class PastryNodeInfo:
+    def __init__(self, obj, b, keySize):
+        self.nodeObj = obj
+        self.ipAddress = self.getRandomIPAddress()
+        self.nodeid = self.getNodeKey(self.ipAddress, b, keySize)
+        self.coordinates = self.getCoordinates()
+        print('Pastry Node Info:', self, self.nodeid)
+
+    def getCoordinates(self):
+        """
+        Map the nodes in a 2D grid to determine the relative distance between
+        the nodes
+
+        Page number 13, section 3, 3rd paragraph mentions:
+        'Each Pastry node is assigned a location in a plane; coordinates in the
+        plane are randomly assigned in the range [0, 1000]. Nodes in the
+        Internet are not uniformly distributed in a Euclidean space; instead,
+        there is a strong clustering of nodes and the triangulation inequality
+        doesn’t always hold.'
+        """
+        return [random.randint(0, 1000), random.randint(0, 1000)]
+
+    def getRandomIPAddress(self):
+        """
+        Get random IP Address for a particular node
+
+        Page number 3, section 2, paragraph 2 mentions:
+        'For instance, nodeIds could be generated by computing a cryptographic
+        hash of the node’s public key or its IP address.'
+        """
+        return (str(random.randint(0, 255)) + ":" +
+                str(random.randint(0, 255)) + ":" +
+                str(random.randint(0, 255)) + ":" +
+                str(random.randint(0, 255)))
+
+    def changeBase(self, num, base):
+        """
+        Takes a number num in base 10 and converts it to base b
+
+        By default hexdigest is returned from cryptographic function used. We
+        convert the number in base 10 to a particular base b. This is useful if
+        we change the value of B which is by default 4.
+        """
+        s = ""
+        if not num:
+            return '0'
+        while num > 0:
+            rem = num % base
+            num = num // base
+            s = chr(48 + rem + 7 * (rem >= 10)) + s
+        return s
+        pass
+
+    def getNodeKey(self, ip, b, keySize):
+        """
+        Get a 128-bit identifier by hashing the ip address
+
+        Page number 3, section 2, paragraph 2 mentions:
+        'The nodeId is assigned randomly when a node joins the system. It is
+        assumed that nodeIds are generated such that the resulting set of
+        nodeIds is uniformly distributed in the 128-bit nodeId space.'
+        """
+        ip = ip.encode('utf-8')
+        dec = int(hashlib.md5(ip).hexdigest(), 16)
+        
+        n = self.changeBase(dec, 2**(b))
+        
+        if b == 2:
+            n = '0' * (64 - len(n)) + n
+        else:
+            n = '0' * (32 - len(n)) + n
+        
+        n = n[0:int(keySize / b)]
+        return n
+        
+
+class PastryNode(process, controller.Controllee):
+    def setup(ctl, boot:BootStrapNode, b:int, keySize:int, L:int, M:int, leafSetLen:int, ti:int, tack:float, tn:int, tps:int):
+        if ctl != None:
+            super().setup(ctl)
+        self.routingTable = [[None for x in range(2**b)] for x in
+                             range(int(keySize / b))]
+        self.upLeafSet = []
+        self.downLeafSet = []
+        self.neighborhoodSet = []
+        self.nodeInfo = PastryNodeInfo(self, b, keySize)
+        send(('getClosestNeighbor', self.nodeInfo), to= boot)
+        pass
+
+    def updateRoutingTable(zRoutingTable, obj):
+        """
+        Update the routing table of the current node based on the state
+        information obtained from other closest nodes present in the routePath
+
+        Page number 8, section 2.4, paragraph 5 mentios:
+        'Next, we consider the routing table, starting at row zero. We consider
+        the most general case, where the nodeIds of A and X share no common
+        prefix. Let Ai denote node A’s row of the routing table at level i. Note
+        that the entries in row zero of the routing table are independent of a
+        node’s nodeId. Thus, A0 contains appropriate values for X0. Other levels
+        of A’s routing table are of no use to X, since A’s and X’s ids share no
+        common prefix. However, appropriate values for X1 can be taken from B1,
+        where B is the first node encountered along the route from A to Z. To
+        see this, observe that entries in B1 and X1 share the same prefix,
+        because X and B have the same first digit in their nodeId.  Similarly, X
+        obtains appropriate entries for X2 from node C, the next node
+        encountered along the route from A to Z, and so on.'
+        """
+        row2 = shl(obj.nodeid, self.nodeInfo.nodeid)
+        for row in range(0,row2 + 1):
+            col = -1
+            for routeTableEntry in zRoutingTable[row]:
+                col += 1
+                if col == int(self.nodeInfo.nodeid[row], 2**b):
+                    self.routingTable[row][col] = self.nodeInfo
+                elif routeTableEntry != None:
+                    minDist = INF
+                    if self.routingTable[row][col]:
+                        minDist = getRelativeDistance(self.routingTable[row][col].coordinates, self.nodeInfo.coordinates)
+                    # Replace with the zRoutingTableEntry only if it is better than
+                    # current entry, otherwise retain the current entry
+                    if getRelativeDistance(routeTableEntry.coordinates, self.nodeInfo.coordinates) < minDist:
+                        self.routingTable[row][col] = routeTableEntry
+        pass
+
+    def addMeInRoutingTable():
+        """
+        Identity map the routing table
+
+        The figure 1 in page number 4 presents:
+        'State of a hypothetical Pastry node with nodeId 10233102, b = 2, and l
+        = 8. All numbers are in base 4. The top row of the routing table is row
+        zero. The shaded cell in each row of the routing table shows the
+        corresponding digit of the present node’s nodeId. The nodeIds in each
+        entry have been split to show the common prefix with 10233102 - next
+        digit - rest of nodeId. The associated IP addresses are not shown.'
+        """
+        i = -1
+        for routeTableRow in self.routingTable:
+            i += 1
+            self.routingTable[i][int(self.nodeInfo.nodeid[i], 2**b)] = self.nodeInfo
+        pass
+
+    def updateNeighborSet(neighborSet, obj):
+        """
+        Update X's neighborhood set with A's neighborhood set
+
+        Page number 7, section 2.4, paragraph 5 mentions:
+        'Since node A is assumed to be in proximity to the new node X, A’s
+        neighborhood set to initialize X’s neighborhood set.'
+        """
+
+        allNodeObjects = self.neighborhoodSet + neighborSet
+        allNodeObjects.append(obj)
+        allNodeObjects = makeListUnique(allNodeObjects)
+        tuples = []
+        for o in allNodeObjects:
+            yDiff = o.coordinates[1] - self.nodeInfo.coordinates[1]
+            xDiff = o.coordinates[0] - self.nodeInfo.coordinates[0]
+            dist = sqrt(yDiff**2 + xDiff**2)
+            tuples.append((o, dist))
+
+        tuples = sorted(tuples, key=lambda t: t[1])
+        self.neighborhoodSet = [o for (o, dist) in tuples][:M]
+
+        ##############################################################################
+        # This is used for checking if neighborhood set contains unique node
+        # ids. Otherwise we need to make sure it has unique elements
+        # nid = []
+        # nid = [o.nodeid for o in self.neighborhoodSet]
+        # print("Make sure they are unique. My neighborhood set has ids:", nid)
+        ##############################################################################
+        pass
+
+    def makeListUnique(objSet):
+        """
+        Make a list of PastryNodeInfo class objects unique based on nodeid as
+        nodeid is supposed to be unique.
+
+        This is a helper function which is used as python / distalgo uses pass
+        by value to send class objects as messages due to which usage of inbuild
+        set() and list() are futile. Hence, this method makes a list unique by
+        keeping only unique node ids in the list and returns it.
+
+        Returns: List of nodes with unique nodeids
+        """
+        # Gets a list of objects either from neighborhood set or leaf set
+        # Returns: List of objects with unique node ids
+        if not objSet:
+            return []
+        all_tuples = [(o, o.nodeid) for o in objSet]
+        all_nodes = unique_by_key(all_tuples, key= itemgetter(1))
+        all_nodes = [o for (o, id) in all_nodes if id !=
+                     self.nodeInfo.nodeid]
+        return all_nodes
+
+    def updateLeafSet(zUpSet, zDownSet, zobj):
+        """
+        Initialize X's leaf set with Z's leaf set
+
+        Page number 7, section 2.4, paragraph 5 mentions:
+        'Moreover, Z has the closest existing nodeId to X, thus its leaf set is
+        the basis for X’s leaf set'
+        """
+        all_nodes = zUpSet + zDownSet
+        all_nodes.append(zobj)
+        for o in all_nodes:
+            if o.nodeid < self.nodeInfo.nodeid:
+                self.downLeafSet.append(o)
+            elif o.nodeid > self.nodeInfo.nodeid:
+                self.upLeafSet.append(o)
+
+        self.downLeafSet = makeListUnique(self.downLeafSet)
+        self.downLeafSet = sorted(self.downLeafSet, key=lambda o: o.nodeid)
+        self.downLeafSet = self.downLeafSet[-leafSetLen:]
+
+        self.upLeafSet = makeListUnique(self.upLeafSet)
+        self.upLeafSet = sorted(self.upLeafSet, key=lambda o: o.nodeid)
+        self.upLeafSet = self.upLeafSet[:leafSetLen]
+
+        ##############################################################################
+        # This is used for checking if leaf set contains unique node ids. Otherwise we
+        # need to make sure it has unique elements
+        # nid = []
+        # nid = [o.nodeid for o in self.upLeafSet + self.downLeafSet]
+        # print("Make sure they are unique. My leaf set has ids:", nid)
+        ##############################################################################
+
+    def getRelativeDistance(coord1, coord2):
+        """
+        For scalar procimity metric, we use geographic distance of pastry nodes
+        for populating the neighborhood set.
+
+        Page number 9, section 2.5, paragraph 2 mentions:
+        'Pastry’s notion of network proximity is based on a scalar proximity
+        metric, such as the number of IP routing hops or geographic distance.'
+        """
+        yDiff = coord1[1] - coord2[1]
+        xDiff = coord1[0] - coord2[0]
+        dist = sqrt(yDiff**2 + xDiff**2)
+        return dist
+        
+    def route(message, dstObj, numHops, tt, tDist):
+        """
+        Causes Pastry to route the given message to the node with nodeId
+        numerically closest to the key, among all live Pastry nodes
+
+        Page number 5, section 2.2, Table 1 presents the entire core routing
+        algorithm:
+        '
+        (1) if (L−|L|/2 ≤ D ≤ L|L|/2) {
+        (2) // D is within range of our leaf set
+        (3) forward to Li, s.th. |D − Li| is minimal;
+        (4) } else {
+        (5) // use the routing table
+        (6) Let l = shl(D, A);
+        (7) if (RDl
+        l = null) {
+        (8) forward to RDl
+        l ;
+        (9) }
+        (10) else {
+        (11) // rare case
+        (12) forward to T ∈ L ∪ R ∪ M, s.th.
+        (13) shl(T,D) ≥ l,
+        (14) |T − D| < |A − D|
+        (15) }
+        (16) }
+        The entire pseudo code is translated to code to bolster the
+        implementation present in the paper.'
+        """
+
+        # Check if the dst node id is within the leaf set
+        minNode = None
+        maxNode = None
+
+        if (downLeafSet == [] and upLeafSet == []):
+            doneMsg = 'done_' + message
+            if (message == 'lookup'):
+                send((doneMsg, numHops, tt, tDist), to= dstObj.nodeObj)
+            else:
+                send((doneMsg, upLeafSet, downLeafSet, numHops, self.nodeInfo, tDist), to= dstObj.nodeObj)
+            return
+        elif (downLeafSet == [] and upLeafSet != []):
+            minNode = self.nodeInfo
+            maxNode = upLeafSet[-1]
+        elif (downLeafSet != [] and upLeafSet == []):
+            minNode = downLeafSet[0]
+            maxNode = self.nodeInfo
+        else:
+            minNode = downLeafSet[0]
+            maxNode = upLeafSet[-1]
+
+        nextNode = self
+        nextNodeInfo = self.nodeInfo
+        minDist = abs(int(self.nodeInfo.nodeid, 2**b) - int(dstObj.nodeid, 2**b))
+        if (dstObj.nodeid >= minNode.nodeid and dstObj.nodeid <= maxNode.nodeid):
+            if (minNode == self.nodeInfo):
+                for ulNode in upLeafSet:
+                    if (abs(int(dstObj.nodeid, 2**b) - int(ulNode.nodeid, 2**b)) < minDist):
+                        minDist = abs(int(dstObj.nodeid, 2**b) - int(ulNode.nodeid, 2**b))
+                        nextNode = ulNode.nodeObj
+                        nextNodeInfo = ulNode
+            elif (maxNode == self.nodeInfo):
+                for dlNode in downLeafSet:
+                    if (abs(int(dstObj.nodeid, 2**b) - int(dlNode.nodeid, 2**b)) < minDist):
+                        minDist = abs(int(dstObj.nodeid, 2**b) - int(dlNode.nodeid, 2**b))
+                        nextNode = dlNode.nodeObj
+                        nextNodeInfo = dlNode
+            else:
+                for ulNode in upLeafSet:
+                    if (abs(int(dstObj.nodeid, 2**b) - int(ulNode.nodeid, 2**b)) < minDist):
+                        minDist = abs(int(dstObj.nodeid, 2**b) - int(ulNode.nodeid, 2**b))
+                        nextNode = ulNode.nodeObj
+                        nextNodeInfo = ulNode
+                for dlNode in downLeafSet:
+                    if (abs(int(dstObj.nodeid, 2**b) - int(dlNode.nodeid, 2**b)) < minDist):
+                        minDist = abs(int(dstObj.nodeid, 2**b) - int(dlNode.nodeid, 2**b))
+                        nextNode = dlNode.nodeObj
+                        nextNodeInfo = dlNode
+
+            if (nextNode == self):
+                doneMsg = 'done_' + message
+                if (message == 'lookup'):
+                    send((doneMsg, numHops, tt, tDist), to= dstObj.nodeObj)
+                else:
+                    send((doneMsg, upLeafSet, downLeafSet, numHops, self.nodeInfo, tDist), to= dstObj.nodeObj)
+                return
+            else:
+                t = logical_clock()
+                #print('\nI am {}\nSending message {} to {} with ack number {}\n'.format(self.nodeInfo.nodeid, message, nextNodeInfo.nodeid, t))
+                dst = getRelativeDistance(self.nodeInfo.coordinates, nextNodeInfo.coordinates)
+                send((message, dstObj, numHops + 1, t, tt, tDist + dst), to= nextNode)
+                if message == 'lookup':
+                    if (await(some(received(('acknowledgement', _t), from_= nextNode)))):
+                        return
+                        pass
+                    elif timeout(tack):
+                        # Handle failure here. No acknowledgement received within time out
+                        # Here nextNode is the failed process. nextNodeInfo is
+                        # the information of the process that failed
+                        repairLeafSet(nextNodeInfo)
+                        route(message, dstObj, numHops, tt, tDist)
+                        return
+                        pass
+                return
+
+        # Use the routing table if destination node id not within leaf set range
+        l = shl(dstObj.nodeid, self.nodeInfo.nodeid)
+        nextNode = None
+        nextNodeInfo = None
+
+        if (routingTable[l][int(dstObj.nodeid[l], 2**b)] != None):
+            t = logical_clock()
+            dst = getRelativeDistance(routingTable[l][int(dstObj.nodeid[l], 2**b)].coordinates, self.nodeInfo.coordinates)
+            send((message, dstObj, numHops + 1, t, tt, tDist + dst), to=
+                 routingTable[l][int(dstObj.nodeid[l], 2**b)].nodeObj)
+            if message == 'lookup':
+                if (await(some(received(('acknowledgement', _t), from_=
+                                        routingTable[l][int(dstObj.nodeid[l], 2**b)].nodeObj)))):
+                    return
+                    pass
+                elif timeout(tack):
+                    # Handle failure here. No acknowledgement received within time out
+                    # Here nextNode is the failed process. nextNodeInfo is
+                    # the information of the process that failed
+                    repairRoutingTable(routingTable[l][int(dstObj.nodeid[l],
+                                       2**b)], l, int(dstObj.nodeid[l], 2**b))
+                    route(message, dstObj, numHops, tt, tDist)
+                    return
+                    pass
+            pass
+        else:
+            # Rare case. Forward to L U M U R
+            leafFailed = False
+            neighborFailed = False
+            routingTableEntryFailed = False
+
+            # Leaf Set -> L
+            for ulNode in upLeafSet:
+                if (abs(int(dstObj.nodeid, 2**b) - int(ulNode.nodeid, 2**b)) <
+                    abs(int(self.nodeInfo.nodeid, 2**b) - int(dstObj.nodeid, 2**b)) and
+                    shl(dstObj.nodeid, ulNode.nodeid) >= shl(dstObj.nodeid, self.nodeInfo.nodeid)):
+                    nextNode = ulNode.nodeObj
+                    nextNodeInfo = ulNode
+                    leafFailed = True
+                    break
+            if (nextNode == None):
+                for dlNode in downLeafSet:
+                    if (abs(int(dstObj.nodeid, 2**b) - int(dlNode.nodeid, 2**b)) <
+                        abs(int(self.nodeInfo.nodeid, 2**b) - int(dstObj.nodeid, 2**b)) and
+                        shl(dstObj.nodeid, dlNode.nodeid) >= shl(dstObj.nodeid, self.nodeInfo.nodeid)):
+                        nextNode = dlNode.nodeObj
+                        nextNodeInfo = dlNode
+                        leafFailed = True
+                        break
+            # Neighborhood Set -> M
+            if (nextNode == None):
+                for o in self.neighborhoodSet:
+                    if (abs(int(dstObj.nodeid, 2**b) - int(o.nodeid, 2**b)) <
+                        abs(int(self.nodeInfo.nodeid, 2**b) - int(dstObj.nodeid, 2**b)) and
+                        shl(dstObj.nodeid, o.nodeid) >= shl(dstObj.nodeid, self.nodeInfo.nodeid)):
+                        nextNode = o.nodeObj
+                        nextNodeInfo = o
+                        neighborFailed = True
+                        break
+            # Routing Table -> R
+            if (nextNode == None):
+                failedRow = l
+                failedCol = -1
+                for routeTableEntry in routingTable[l]:
+                    failedCol += 1
+                    if (routeTableEntry != None  and
+                        abs(int(routeTableEntry.nodeid, 2**b) - int(dstObj.nodeid, 2**b)) <
+                        abs(int(self.nodeInfo.nodeid, 2**b) - int(dstObj.nodeid, 2**b))):
+                        nextNode = routeTableEntry.nodeObj
+                        nextNodeInfo = routeTableEntry
+                        routingTableEntryFailed = True
+                        break
+            if (nextNode):
+                t = logical_clock()
+                dst = getRelativeDistance(self.nodeInfo.coordinates, nextNodeInfo.coordinates)
+                send((message, dstObj, numHops + 1, t, tt, tDist + dst), to= nextNode)
+                if message == 'lookup':
+                    if (await(some(received(('acknowledgement', _t), from_=
+                                            nextNode)))):
+                        return
+                        pass
+                    elif timeout(tack):
+                        # Handle failure here. No acknowledgement received within time out
+                        # Here nextNode is the failed process. nextNodeInfo is
+                        # the information of the process that failed
+                        if (leafFailed):
+                            repairLeafSet(nextNodeInfo)
+                        elif (neighborFailed):
+                            repairNeighborSet(nextNodeInfo)
+                        elif (routingTableEntryFailed):
+                            repairRoutingTable(nextNodeInfo, failedRow,
+                                               failedCol)
+                        route(message, dstObj, numHops, tt, tDist)
+                        return
+                        pass
+            else:
+                doneMsg = 'done_' + message
+                if (message == 'lookup'):
+                    send((doneMsg, numHops, tt, tDist), to= dstObj.nodeObj)
+                else:
+                    send((doneMsg, upLeafSet, downLeafSet, numHops, self.nodeInfo, tDist), to= dstObj.nodeObj)
+
+    def sendState(numHops, X):
+        """
+        Sending state to node X
+
+        Page number 7, section 2.4, paragraph 4 mentions:
+        'In response to receiving the “join” request, nodes A, Z, and all nodes
+        encountered on the path from A to Z send their state tables to X.'
+        """
+        send(('stateTables', self.routingTable, self.neighborhoodSet,
+              self.nodeInfo, numHops), to= X)
+        pass
+
+    def shl(A, B):
+        """
+        Returns:
+        The length of the prefix shared among A and B
+
+        Page number 5, section 2.2 mentions:
+        'We begin by defining some notation.
+        Ri l: the entry in the routing table R at column i, 0 ≤ i < 2b and row
+              l, 0 ≤ l < 128/b.
+        Li: the i-th closest nodeId in the leaf set L, −|L|/2 ≤ i ≤ |L|/2, where
+            negative/positive indices indicate nodeIds smaller/larger than the
+            present nodeId, respectively.
+        Dl: the value of the l’s digit in the key D.
+        shl(A, B): the length of the prefix shared among A and B, in digits.'
+        """
+        key_as_list = [str(A),str(B)]
+        return len(os.path.commonprefix(key_as_list))
+
+    def repairLeafSet(failedObj):
+        """
+        Repair the leaf set for current node to account for a failed node X
+
+        Page number 8, section 2.4, paragraph 5 mentions:
+        'To replace a failed node in the leaf set, its neighbor in the nodeId
+        space contacts the live node with the largest index on the side of the
+        failed node, and asks that node for its leaf table.'
+        """
+        
+        # Checking where failed node lies i.e. in upleaf set or downleaf set
+        # print('I am {}\nI found that node {} has failed, so want to update my LefSet\nMy current Up Leaf Set :- {}\nMy Current down Leaf Set :-  {}\n'.format(self.nodeInfo.nodeid, failedObj.nodeid,[o.nodeid for o in self.upLeafSet],[o.nodeid for o in self.downLeafSet]))
+        if failedObj.nodeid > self.nodeInfo.nodeid:
+            self.upLeafSet = [o for o in self.upLeafSet if o.nodeid !=
+                              failedObj.nodeid]
+            beforeLength = len(self.upLeafSet)
+            if beforeLength == 0:
+                print("No new nodes in the network. Cannot update my leaf set")
+                return
+            maxIndex = -1
+            
+            #Finding next largest index node on the side of failed node
+            for i in range(maxIndex, -beforeLength - 1, -1):
+                next_largest_nodeObj = self.upLeafSet[i]
+                t1 = logical_clock()
+                send(('getLeafset', t1), to= next_largest_nodeObj.nodeObj)
+                if await(some(received(('LeafSet', xUpLeafSet, xDownLeafSet, _t1),
+                              from_= next_largest_nodeObj.nodeObj))):
+                    full_leafsetObj = xDownLeafSet + xUpLeafSet
+                    for leafObj in full_leafsetObj:
+                        if (leafObj.nodeid > self.nodeInfo.nodeid):
+                            t2 = logical_clock()
+                            send(('isNodeAlive', t2), to= leafObj.nodeObj)
+                            if await(some(received(('NodeIsAlive', _t2), from_=
+                                                   leafObj.nodeObj))):
+                                self.upLeafSet.append(leafObj)
+                            elif timeout(tack):
+                                pass
+                    self.upLeafSet = makeListUnique(self.upLeafSet)
+                    self.upLeafSet = sorted(self.upLeafSet, key=lambda o: o.nodeid)
+                    self.upLeafSet = self.upLeafSet[:leafSetLen]
+                    afterLength = len(self.upLeafSet)
+                    if (afterLength > beforeLength):
+                        print('I am {}\nI found that node {} has failed so wanted to update my LefSet\nMy updated Up Leaf Set :- {}\nMy updated down Leaf Set :-  {}\n'.format(self.nodeInfo.nodeid, failedObj.nodeid,[o.nodeid for o in self.upLeafSet],[ o.nodeid for o in self.downLeafSet]))
+                        # Repair successful
+                        return
+                elif timeout(tack):
+                    pass
+        else:
+            self.downLeafSet = [o for o in self.downLeafSet if o.nodeid !=
+                                failedObj.nodeid]
+            beforeLength = len(self.downLeafSet)
+            if beforeLength == 0:
+                print("No new nodes in the network. Cannot update my leaf set")
+            minIndex = 0
+
+            #Finding next largest index node on the side of failed node
+            for i in range(minIndex, beforeLength):
+                next_smallest_nodeObj = self.downLeafSet[minIndex]
+                t1 = logical_clock()
+                send(('getLeafset', t1), to= next_smallest_nodeObj.nodeObj)
+                if await(some(received(('LeafSet',xUpLeafSet,xDownLeafSet, _t1),
+                              from_= next_smallest_nodeObj.nodeObj))):
+                    full_leafsetObj = xUpLeafSet + xDownLeafSet
+                    for leafObj in full_leafsetObj:
+                        if leafObj.nodeid < self.nodeInfo.nodeid:
+                            t2 = logical_clock()
+                            send(('isNodeAlive', t2), to= leafObj.nodeObj)
+                            if await(some(received(('NodeIsAlive', _t2), from_=
+                                                   leafObj.nodeObj))):
+                                self.downLeafSet.append(leafObj)
+                            elif timeout(tack):
+                                pass
+                    self.downLeafSet = makeListUnique(self.downLeafSet)
+                    self.downLeafSet = sorted(self.downLeafSet, key=lambda o: o.nodeid)
+                    self.downLeafSet = self.downLeafSet[leafSetLen:]
+                    afterLength = len(self.downLeafSet)
+                    if (afterLength > beforeLength):
+                        print('I am {}\nI found that node {} has failed so wanted to update my LefSet\nMy updated Up Leaf Set :- {}\nMy updated down Leaf Set :-  {}\n'.format(self.nodeInfo.nodeid, failedObj.nodeid,[o.nodeid for o in self.upLeafSet],[ o.nodeid for o in self.downLeafSet]))
+                        # Repair successful
+                        return
+                elif timeout(tack):
+                    pass
+
+
+        # print('I am {}\nI found that node {} has failed so wanted to update my LefSet\nMy updated Up Leaf Set :- {}\nMy updated down Leaf Set :-  {}\n'.format(self.nodeInfo.nodeid, failedObj.nodeid,[o.nodeid for o in self.upLeafSet],[ o.nodeid for o in self.downLeafSet]))
+        pass
+
+    def repairNeighborSet(failedObj):
+        """
+        Repair the neighborhood set for current node to account for a failed node X
+
+        Page number 8, section 2.4, paragraph 5, line number 4 mentions:
+        'If a member is not responding, the node asks other members for their
+        neighborhood tables, checks the distance of each of the newly discovered
+        nodes, and updates it own neighborhood set accordingly.'
+        """
+        # print('In neighborhood set\nI am {} with coordinates ({}, {})\nI found that node {} has failed\nMy current neighborhood Set :- {}\n'.format(self.nodeInfo.nodeid, self.nodeInfo.coordinates[0], self.nodeInfo.coordinates[1], failedObj.nodeid,[o.nodeid for o in self.neighborhoodSet]))
+        self.neighborhoodSet = [o for o in self.neighborhoodSet if o.nodeid !=
+                                failedObj.nodeid]
+        total_neighborsOfneighborsObj = []
+        
+        # Getting all the neighbor's of neighbor
+        for neighborObj in self.neighborhoodSet:
+            t1 = logical_clock()
+            send(('getNeighborhoodSet', t1), to= neighborObj.nodeObj)
+            if await(some(received(('NeighborhoodSet',
+                                    xNeighborhoodSet, _t1), from_=
+                                    neighborObj.nodeObj))):
+                for neighborOfneighborObj in xNeighborhoodSet:
+                    t2 = logical_clock()
+                    send(('isNodeAlive', t2), to= neighborOfneighborObj.nodeObj)
+                    if await(some(received(('NodeIsAlive', _t2), from_=
+                                           neighborOfneighborObj.nodeObj))):
+
+                        total_neighborsOfneighborsObj.append(neighborOfneighborObj)
+                    elif timeout(tack):
+                        pass
+            elif timeout(tack):
+                pass
+
+        total_neighborsOfneighborsObj = makeListUnique(total_neighborsOfneighborsObj)
+
+        total_neighborsOfneighborsObj = [o for o in
+                                         total_neighborsOfneighborsObj
+                                         if o.nodeid != failedObj.nodeid]
+
+
+        updateNeighborSet(total_neighborsOfneighborsObj, self.nodeInfo)
+        # print('In neighborhood set\nI am {} with coordinates ({}, {})\nI found that node {} has failed\nMy updated neighborhood Set :- {}\n'.format(self.nodeInfo.nodeid, self.nodeInfo.coordinates[0], self.nodeInfo.coordinates[1], failedObj.nodeid,[o.nodeid for o in self.neighborhoodSet]))
+
+    def repairRoutingTable(failedObj, row, col):
+        """
+        Function repairs routing table when a node 'X' with object 'failedObj' fails in routing table
+
+        Page number 8, section 2.4, paragraph 7 mentions:
+        'To repair a failed routing table entry R(l,d), a node contacts first
+        the node referred to by another entry R(l,i), i != d of the same row,
+        and asks for that node’s entry for R(l,d).  In the event that none of
+        the entries in row l have a pointer to a live node with the appropriate
+        prefix, the node next contacts an entry R(l+1, i), i != d, thereby
+        casting a wider net. This procedure is highly likely to eventually find
+        an appropriate node if one exists.'
+        """
+        # print('In repair routing table. I am {}\nFailed entry at {},{} -> {}\n'.format(self.nodeInfo.nodeid, row, col, failedObj.nodeid))
+        self.routingTable[row][col] = None
+        return
+        
+        #Contacting other nodes in self routing table for node at (row,col) in their routing table
+        #row, col is the entry of failed node in self routing table 
+        for r in range(row, len(self.routingTable)):
+            for c in range(0, len(self.routingTable[r])):
+                        tempObj = self.routingTable[r][c]
+                        if(c != col and tempObj != None):
+                            t1 = logical_clock()
+                            send(('getRoutingTableEntry', row, col, t1), to= tempObj.nodeObj)
+                            if await(some(received(('RoutingTableEntry',
+                                                    xRTEntry, _t1), from_=
+                                                   tempObj.nodeObj))):
+                                # Check if recieved node is not None and is alive by contacting it
+                                # If yes then update routing table
+                                if xRTEntry != None:
+                                    t2 = logical_clock()
+                                    send(('isNodeAlive', t2), to= xRTEntry.nodeObj)
+                                    if await(some(received(('NodeIsAlive', _t2),
+                                                           from_= xRTEntry.nodeObj))):
+                                        # Routing Table updated with new entry
+                                        # 'xRTEntry'
+                                        self.routingTable[row][col] = xRTEntry
+                                        # print('In repair routing table. I am {}\nFailed(updated) entry at {},{} -> {}\n'.format(self.nodeInfo.nodeid, row, col, self.routingTable[row][col].nodeid))
+                                        return
+                                    elif timeout(tack):
+                                        pass
+                            elif timeout(tack):
+                                pass
+        # print('In repair routing table. I am {}\nCould not update Failed(updated) entry at {},{}'.format(self.nodeInfo.nodeid, row, col))
+
+    def receive(msg= ('getNeighborhoodSet', t), from_= X):
+        """
+        As this is a distributed system, the state tables are requested by
+        passing appropriate messages.
+        """
+        send(('NeighborhoodSet', self.neighborhoodSet, t), to= X)
+
+    def receive(msg= ('getLeafset', t), from_= X):
+        """
+        Message to get leaf set from X
+
+        As this is a distributed system, the state tables are requested by
+        passing appropriate messages.
+        """
+        send(('LeafSet', self.upLeafSet, self.downLeafSet, t), to= X)
+
+    def receive(msg= ('getRoutingTableEntry', row, col, t), from_= X):
+        """
+        Message to get routing table entry at failed (row,col) in other node's routing table
+
+        As this is a distributed system, the state tables are requested by
+        passing appropriate messages.
+        """
+        send(('RoutingTableEntry', self.routingTable[row][col], t), to= X)
+        pass
+
+    def receive(msg= ('isNodeAlive', t), from_= X):
+        """
+        Message to check if node is alive or not
+
+        As this is a distributed system, we can only check if the node is alive
+        by sending appropriate messages.
+        """
+        send(('NodeIsAlive', t), to= X)
+
+    def receive(msg= ('stateTables', zRoutingTable, zNeighborhoodSet, obj,
+                      numHops), from_= N):
+        """
+        Callback function for receiving state changes from node N
+        
+        Page number 7, section 2.4, paragraph 4 mentions:
+        'The new node X inspects this information, may request state from
+        additional nodes, and then initializes its own state tables, using a
+        procedure describe below. Finally, X informs any nodes that need to be
+        aware of its arrival. This procedure ensures that X initializes its
+        state with appropriate values, and that the state in all other affected
+        nodes is updated'
+        """
+        # print('Received stateTables from ', N)
+        if (numHops == 1):
+            # This is A
+            # The rows from 0 to number of shared prefix length (shl) must be
+            # copied to the routing table from the closest node. This will copy
+            # all the rows from 0 to shl - 1. The outside function will copy the
+            # last row.
+            row = shl(obj.nodeid, self.nodeInfo.nodeid)
+            for i in range(0, row):
+                col = -1
+                for routeTableEntry in zRoutingTable[i]:
+                    col += 1
+                    if col == int(self.nodeInfo.nodeid[i], 2**b):
+                        self.routingTable[i][col] = self.nodeInfo
+                    elif routeTableEntry != None:
+                        self.routingTable[i][col] = routeTableEntry
+            # The X's neighborhood set will be updated from this node
+            updateNeighborSet(zNeighborhoodSet, obj)
+        updateRoutingTable(zRoutingTable, obj)
+        pass
+
+    def receive(msg= ('resultingStateTables', downSet, upSet, xRoutingTable, xNeighborhoodSet, obj), from_= X):
+        """
+        Page number 8, paragraph 2 mentions:
+        'Finally, X transmits a copy of its resulting state to each of the nodes
+        found in its neighborhood set, leaf set, and routing table. Those nodes
+        in turn update their own state based on the information received.'
+        """
+        # print('I have received the resulting state table from ', X)
+        # t1 = self.upLeafSet.copy()
+        # t2 = self.downLeafSet.copy()
+        updateLeafSet(upSet, downSet, obj)
+        # print('\n\nI am {}\nReceived resulting state from {}\nUpSet {} downSet {}\nMy earlier upSet {} My earlier downSet {}\nMy updated upSet {} My updated downSet {}\n\n'.format(self.nodeInfo.nodeid, obj.nodeid, [o.nodeid for o in upSet], [o.nodeid for o in downSet], [o.nodeid for o in t1], [o.nodeid for o in t2], [o.nodeid for o in self.upLeafSet], [o.nodeid for o in self.downLeafSet]))
+
+        updateNeighborSet(xNeighborhoodSet, obj)
+        updateRoutingTable(xRoutingTable, obj)
+        pass
+
+    def receive(msg= ('join', obj, numHops, _, _, _,), from_= X):
+        """
+        Callback function for handling forward messages
+
+        Page number 7, section 2.4, paragraph 3 mentions:
+        'Node X then asks A to route a special “join” message with the key equal
+        to X. Like any message, Pastry routes the join message to the existing
+        node Z whose id is numerically closest to X.'
+        """
+        dstNode = obj.nodeObj
+        if(obj.nodeid == self.nodeInfo.nodeid):
+            print('SENDING STATE TABLES TO MYSELF. OH MY GOD')
+        sendState(numHops, obj.nodeObj)
+        route('join', obj, numHops, 0, 0)
+        pass
+
+    def receive(msg= ('lookup', obj, numHops, t1, t2, tDist), from_= X):
+        """
+        The core routing algorithm is used to route messages across the Pastry
+        network. To make sure this node is transmitting the information, we send
+        an acknowledgement to the sender. Sending acknowledgement was suggested
+        by Prof. Annie Liu to make sure node is alive.
+        """
+        # print('\nI am {}\nSending Ack to {} with ack number {}\n'.format(self.nodeInfo.nodeid, obj.nodeid, t1))
+        send(('acknowledgement', t1), to= X)
+        route('lookup', obj, numHops, t2, tDist)
+
+    def receive(msg= ('getHopCount', src, dst), from_= X):
+        """
+        This is the initial phase of lookup where the tester program sends a
+        message getHopCount to start the lookup. The totalHops message is sent
+        once the lookup process is completed.
+        """
+        t = logical_clock()
+        # print('\nI am {}\nSending lookup message to {} '.format(self.nodeInfo.nodeid, src.nodeid))
+        send(('lookup', dst, 0, t, t, 0), to= src.nodeObj)
+        if (await(some(received(('acknowledgement', _t), from_= src.nodeObj)))):
+            pass
+        elif timeout(tack):
+            # Handle failure here. No acknowledgement received within time out
+            print('Source node with node id', src.nodeid, 'has failed. Terminating')
+            return
+            pass
+
+        if await(some(received(('done_lookup', numHops, _t, tDist)))):
+            # print('Done lookup', numHops, src.nodeid, self.nodeInfo.nodeid)
+            send(('totalHops', src, dst, numHops, tDist), to= X)
+        elif timeout(tps):
+            send(('totalHops', src, dst, -1, 0), to= X)
+            print('Done lookup failed', -1, src.nodeid, self.nodeInfo.nodeid)
+
+    def unique_by_key(elements, key= None):
+        """
+        This is a helper function to make a list of tuples unique based on a
+        single tuple parameter
+        """
+        if key is None:
+            key = lambda e: e
+        return {key(e1): e1 for e1 in elements}.values()
+
+    # @controller.run
+    def run():
+        """
+        This is the driver program for the entire implementation.
+
+        Page number 7, section 2.4, paragraph 2 mentions
+        'When a new node arrives, it needs to initialize its state tables, and
+        then inform other nodes of its presence. We assume the new node knows
+        initially about a nearby Pastry node A, according to the proximity
+        metric, that is already part of the system. Such a node can be located
+        automatically, for instance, using “expanding ring” IP multicast, or be
+        obtained by the system administrator through outside channels. 
+        Let us assume the new node’s nodeId is X. (The assignment of nodeIds is
+        applicationspecific; typically it is computed as the SHA-1 hash of its
+        IP address or its public key).  Node X then asks A to route a special
+        “join” message with the key equal to X. Like any message, Pastry routes
+        the join message to the existing node Z whose id is numerically closest
+        to X'
+        Also, page number 8, paragraph 2 mentions
+        'Finally, X transmits a copy of its resulting state to each of the nodes
+        found in its neighborhood set, leaf set, and routing table.
+        Finally, X transmits a copy of its resulting state to each of the nodes
+        found in its neighborhood set, leaf set, and routing table.'
+
+        After sending the resulting state, we send joinCompleted request so that
+        the parent() is aware that this node is ready to send and receive
+        messages. We then periodically check if any node needs repair in our
+        neighborhood set as mentioned in page number 9, first paragraph.
+
+        'For this purpose, a node attempts to contact each member of the
+        neighborhood set periodically to see if it is still alive.'
+
+        Whenever we receive a message ExitProcess, we stop whatever we are doing
+        and terminate the program.
+        """
+        if await(some(received(('closestNode', A, nid)))):
+            if A == None:
+                # This is the first node in the overlay network
+                # Identity mapping its own routingTable
+                print('I am first Node', self.nodeInfo.nodeid)
+                addMeInRoutingTable()
+                send(('JoinCompleted'), to= parent())
+            else:
+                if (nid == self.nodeInfo.nodeid):
+                    
+                    print('Node already present. Terminating')
+                    return
+                else:
+                    addMeInRoutingTable()
+                    # print('I am ', self.nodeInfo.nodeid,' and My Closest Node is', nid)
+                    send(('join', self.nodeInfo, 1, 0, 0, 0), to= A)
+                    if await(some(received(('done_join', upSet, downSet, maxHops,
+                                            obj, tDist)))):
+                        # print('done_join received from ', obj.nodeid)
+                        # t1 = self.upLeafSet.copy()
+                        # t2 = self.downLeafSet.copy()
+                        updateLeafSet(upSet, downSet, obj)
+                        # print('\n\nI am {}\nReceived done_join from {}\nUpSet {} downSet {}\nMy earlier upSet {} My earlier downSet {}\nMy updated upSet {} My updated downSet {}\n\n'.format(self.nodeInfo.nodeid, obj.nodeid, [o.nodeid for o in upSet], [o.nodeid for o in downSet], [o.nodeid for o in t1], [o.nodeid for o in t2], [o.nodeid for o in self.upLeafSet], [o.nodeid for o in self.downLeafSet]))
+                        if (await(some(received(('stateTables', _, _, _, _)),
+                                       has= len(setof(o.nodeid,
+                                                      received(('stateTables', _,
+                                                                _, o, _)))) == maxHops))):
+                            # Send the resulting state tables to L U M U R for
+                            # others to update their state tables
+                            all_nodes = self.upLeafSet + self.downLeafSet + self.neighborhoodSet
+
+                            for routeTableRow in self.routingTable:
+                                for routeTableEntry in routeTableRow:
+                                    if routeTableEntry:
+                                        all_nodes.append(routeTableEntry)
+
+                            all_nodes = makeListUnique(all_nodes)
+
+                            # Send state to all the nodes in allNodes
+                            for o in all_nodes:
+                                send(('resultingStateTables',
+                                      self.downLeafSet, self.upLeafSet, self.routingTable, self.neighborhoodSet,
+                                      self.nodeInfo), to= o.nodeObj)
+                            pass
+                            send(('JoinCompleted'), to= parent())
+                    elif timeout(ti):
+                        pass
+        # print('I am initialized', self.nodeInfo.nodeid)
+
+        if await(False):
+            pass
+        elif timeout(tn):
+            pass
+
+        while (True):
+            t = logical_clock()
+            for o in self.neighborhoodSet:
+                send(('isNodeAlive', t), to= o.nodeObj)
+                if await(some(received(('NodeIsAlive', _t), from_= o.nodeObj))):
+                    pass
+                elif timeout(tack):
+                    # Handle failure here. No acknowledgement received within time out
+                    repairNeighborSet(o)
+                    pass
+
+            if await(some(received(('ExitProcess')))):
+                print('I am exiting: ', self.nodeInfo.nodeid)
+                return
+                pass
+            elif timeout(tn):
+                pass
+        pass

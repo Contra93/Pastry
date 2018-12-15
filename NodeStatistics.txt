@@ -1,0 +1,60 @@
+N = 10
+Total time taken in node joining 0.4668433666229248
+Average time taken in node joining  0.04668433666229248
+Time taken in nodes initialization is 1.5927071571350098
+
+N = 20
+Total time taken in node joining 0.9278762340545654
+Average time taken in node joining  0.04639381170272827
+Time taken in nodes initialization is 3.177539587020874
+
+N = 30
+Total time taken in node joining 1.402587652206421
+Average time taken in node joining  0.04675292174021403
+Time taken in nodes initialization is 4.780870199203491
+
+N = 40
+Total time taken in node joining 1.8671023845672607
+Average time taken in node joining  0.04667755961418152
+Time taken in nodes initialization is 6.372628211975098
+
+N = 50
+Total time taken in node joining 2.3524274826049805
+Average time taken in node joining  0.04704854965209961
+Time taken in nodes initialization is 7.985174655914307
+
+N = 60
+Total time taken in node joining 2.773955821990967
+Average time taken in node joining  0.04623259703318278
+Time taken in nodes initialization is 9.540692329406738
+
+N = 70
+Total time taken in node joining 3.2266845703125
+Average time taken in node joining  0.04609549386160714
+Time taken in nodes initialization is 11.116405248641968
+
+N = 80
+Total time taken in node joining 3.69457745552063
+Average time taken in node joining  0.046182218194007876
+Time taken in nodes initialization is 12.719518661499023
+
+N = 90
+Total time taken in node joining 4.129801988601685
+Average time taken in node joining  0.04588668876224094
+Time taken in nodes initialization is 14.283397197723389
+
+N = 100
+Total time taken in node joining 4.591904878616333
+Average time taken in node joining  0.04591904878616333
+Time taken in nodes initialization is 15.880819082260132
+
+N = 150
+Total time taken in node joining 6.832031488418579
+Average time taken in node joining  0.04554687658945719
+Time taken in nodes initialization is 23.81600856781006
+
+N = 200
+Total time taken in node joining 9.103288650512695
+Average time taken in node joining  0.045516443252563474
+Time taken in nodes initialization is 31.803991556167603
+

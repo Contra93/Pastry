@@ -1,0 +1,49 @@
+N = 20 , b = 2 , keySize = 16 , |L| = 4 , |M| = 8 , lookup trails 200 , successRuns 200 
+[0, 79, 106, 15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+Average hops: 1.68
+Relative Distance: 1.2547353953147555
+
+N = 40 , b = 2 , keySize = 16 , |L| = 4 , |M| = 8 , lookup trails 200 , successRuns 200 
+[0, 53, 94, 49, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+Average hops: 2.02
+Relative Distance: 1.454371164907285
+
+N = 60 , b = 2 , keySize = 16 , |L| = 4 , |M| = 8 , lookup trails 200 , successRuns 200 
+[0, 25, 82, 87, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+Average hops: 2.37
+Relative Distance: 1.4839101043313725
+
+N = 80 , b = 2 , keySize = 16 , |L| = 4 , |M| = 8 , lookup trails 200 , successRuns 200 
+[0, 19, 90, 75, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+Average hops: 2.44
+Relative Distance: 1.5396411973069786
+
+N = 100 , b = 2 , keySize = 16 , |L| = 4 , |M| = 8 , lookup trails 200 , successRuns 200 
+[0, 17, 75, 84, 22, 2, 0, 0, 0, 0, 0, 0, 0, 0]
+Average hops: 2.585
+Relative Distance: 1.6071281428168902
+
+N = 120 , b = 2 , keySize = 16 , |L| = 4 , |M| = 8 , lookup trails 200 , successRuns 200 
+[0, 21, 64, 86, 26, 3, 0, 0, 0, 0, 0, 0, 0, 0]
+Average hops: 2.63
+Relative Distance: 1.6437100563478446
+
+N = 140 , b = 2 , keySize = 16 , |L| = 4 , |M| = 8 , lookup trails 200 , successRuns 200 
+[0, 20, 55, 94, 29, 1, 1, 0, 0, 0, 0, 0, 0, 0]
+Average hops: 2.695
+Relative Distance: 1.7470270107642594
+
+N = 160 , b = 2 , keySize = 16 , |L| = 4 , |M| = 8 , lookup trails 200 , successRuns 200 
+[0, 17, 52, 97, 32, 2, 0, 0, 0, 0, 0, 0, 0, 0]
+Average hops: 2.75
+Relative Distance: 1.6167168463686936
+
+N = 180 , b = 2 , keySize = 16 , |L| = 4 , |M| = 8 , lookup trails 200 , successRuns 200 
+[0, 16, 49, 100, 31, 3, 1, 0, 0, 0, 0, 0, 0, 0]
+Average hops: 2.795
+Relative Distance: 1.6912030750711897
+
+N = 200 , b = 2 , keySize = 16 , |L| = 4 , |M| = 8 , lookup trails 200 , successRuns 200 
+[0, 13, 54, 85, 44, 4, 0, 0, 0, 0, 0, 0, 0, 0]
+Average hops: 2.86
+Relative Distance: 1.6444598776445205
